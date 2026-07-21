@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Muslim Chain Explorer — Contract Details</title>
+<meta name="description" content="A responsive smart-contract dashboard for exploring Muslim Chain contract metadata, transactions, token transfers, ABI functions, source code, and events." />
+<meta name="theme-color" content="#0a1410" />
+<title>Muslim Chain Contract Explorer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500;600&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -479,7 +481,7 @@
 
 <header class="topbar">
   <div class="topbar-inner">
-    <a href="/" class="logo">
+    <a href="./" class="logo" aria-label="Muslim Chain Explorer home">
       <div class="logo-mark"></div>
       <div class="logo-text">
         Muslim Chain
@@ -487,13 +489,13 @@
       </div>
     </a>
     <div class="search-wrap">
-      <input id="globalSearch" type="text" placeholder="Search by address / txn hash / block / token …" />
+      <input id="globalSearch" type="search" inputmode="text" autocomplete="off" aria-label="Search by contract address" placeholder="Search by contract address (0x…)" />
     </div>
     <nav class="nav">
-      <a href="#">Blocks</a>
-      <a href="#">Txns</a>
-      <a href="#" class="active">Contracts</a>
-      <a href="#">Tokens</a>
+      <a href="#" aria-disabled="true" title="Requires explorer route integration">Blocks</a>
+      <a href="#" aria-disabled="true" title="Requires explorer route integration">Transactions</a>
+      <a href="./" class="active" aria-current="page">Contracts</a>
+      <a href="#" aria-disabled="true" title="Requires explorer route integration">Tokens</a>
     </nav>
   </div>
 </header>
@@ -502,7 +504,7 @@
 
   <!-- Breadcrumb & Title -->
   <div class="breadcrumb">
-    <a href="#">Explorer</a> <span>›</span> <a href="#">Contracts</a> <span>›</span> <span id="bc-addr">0x…</span>
+    <a href="./">Explorer</a> <span>›</span> <a href="./">Contracts</a> <span>›</span> <span id="bc-addr">0x…</span>
   </div>
   <h1 class="page-title">
     Contract Details
@@ -517,7 +519,7 @@
       <h2 id="contractName">Loading…</h2>
       <div class="addr-row">
         <span id="contractAddr" class="hash">—</span>
-        <button class="copy-btn" data-copy="contractAddr" title="Copy address">
+        <button class="copy-btn" data-copy="contractAddr" title="Copy address" aria-label="Copy contract address">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
         </button>
         <span class="verified-badge" id="verifiedBadge">
@@ -527,8 +529,8 @@
       </div>
     </div>
     <div class="header-actions">
-      <button class="btn">Follow</button>
-      <button class="btn btn-primary">Interact</button>
+      <button class="btn" id="followBtn" type="button">Follow</button>
+      <button class="btn btn-primary" id="interactBtn" type="button">Interact</button>
     </div>
   </section>
 
@@ -640,7 +642,7 @@
 
 <footer class="site-footer">
   <div class="site-footer-inner">
-    © 2000–<span id="footerYear">2025</span> <span class="sep">|</span> All rights reserved <span class="sep">|</span> <span class="brand">Muslim Logs ecosystem</span>
+    © <span id="footerYear">2026</span> <span class="sep">|</span> <span class="brand">MuslimLogs ecosystem</span> <span class="sep">|</span> Contract Explorer UI
   </div>
 </footer>
 
@@ -666,11 +668,17 @@ const CONFIG = {
 
 /* ---------- Resolve the address from ?address= or default ---------- */
 const params = new URLSearchParams(location.search);
-const ADDRESS = params.get('address') || '0x0000000000000000000000000000000000000000';
+const DEFAULT_ADDRESS = '0x0000000000000000000000000000000000000000';
+const isAddress = (value='') => /^0x[a-fA-F0-9]{40}$/.test(value);
+const requestedAddress = params.get('address') || '';
+const ADDRESS = isAddress(requestedAddress) ? requestedAddress : DEFAULT_ADDRESS;
 
 /* ---------- Helpers ---------- */
 const $ = (id) => document.getElementById(id);
 const shorten = (a='') => a.length > 16 ? a.slice(0,8) + '…' + a.slice(-6) : a;
+const escapeHtml = (value='') => String(value).replace(/[&<>'"]/g, char => ({
+  '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;'
+}[char]));
 const timeAgo = (ts) => {
   if (!ts) return '—';
   const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
@@ -726,8 +734,26 @@ $('copySourceBtn')?.addEventListener('click', async () => {
 $('globalSearch').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     const q = e.target.value.trim();
-    if (q.startsWith('0x') && q.length >= 40) location.search = '?address=' + q;
+    if (isAddress(q)) {
+      location.search = '?address=' + encodeURIComponent(q);
+      return;
+    }
+    e.target.setCustomValidity('Enter a valid 42-character EVM contract address.');
+    e.target.reportValidity();
   }
+});
+$('globalSearch').addEventListener('input', e => e.target.setCustomValidity(''));
+
+$('followBtn').addEventListener('click', () => {
+  const key = `followed:${ADDRESS.toLowerCase()}`;
+  const following = localStorage.getItem(key) !== 'true';
+  localStorage.setItem(key, String(following));
+  $('followBtn').textContent = following ? 'Following' : 'Follow';
+  $('followBtn').setAttribute('aria-pressed', String(following));
+});
+
+$('interactBtn').addEventListener('click', () => {
+  document.querySelector('[data-panel="contract"]').click();
 });
 
 /* ============================================================
@@ -740,7 +766,12 @@ async function loadContract() {
   document.title = 'Contract ' + shorten(ADDRESS) + ' — Muslim Chain';
 
   const d = await api(CONFIG.endpoints.contract(ADDRESS));
-  if (!d) return renderContract({});          // still renders placeholders
+  if (!d) {
+    renderContract({});
+    $('contractName').textContent = 'Contract data unavailable';
+    $('contractName').title = 'Confirm the API base URL and that the backend permits browser requests.';
+    return;
+  }
   renderContract(d);
 }
 
@@ -782,14 +813,14 @@ async function loadTransactions() {
   $('txBody').innerHTML = rows.map(tx => {
     const isOut = (tx.from || '').toLowerCase() === ADDRESS.toLowerCase();
     return `<tr>
-      <td><a class="hash" href="#">${shorten(tx.hash)}</a></td>
-      <td><span class="method-pill">${tx.method || 'Transfer'}</span></td>
-      <td><a href="#">${fmtNum(tx.blockNumber, 0)}</a></td>
-      <td>${timeAgo(tx.timestamp)}</td>
-      <td><a href="?address=${tx.from}">${shorten(tx.from)}</a></td>
+      <td><span class="hash">${escapeHtml(shorten(tx.hash))}</span></td>
+      <td><span class="method-pill">${escapeHtml(tx.method || 'Transfer')}</span></td>
+      <td>${escapeHtml(fmtNum(tx.blockNumber, 0))}</td>
+      <td>${escapeHtml(timeAgo(tx.timestamp))}</td>
+      <td><a href="?address=${encodeURIComponent(tx.from || '')}">${escapeHtml(shorten(tx.from))}</a></td>
       <td><span class="dir ${isOut ? 'out' : 'in'}">${isOut ? 'OUT' : 'IN'}</span></td>
-      <td><a href="?address=${tx.to}">${shorten(tx.to)}</a></td>
-      <td>${fmtNum(tx.value)} MSC</td>
+      <td><a href="?address=${encodeURIComponent(tx.to || '')}">${escapeHtml(shorten(tx.to))}</a></td>
+      <td>${escapeHtml(fmtNum(tx.value))} MSC</td>
       <td><span class="status ${tx.status === 'success' || tx.status === 1 ? 'ok' : 'fail'}">${tx.status === 'success' || tx.status === 1 ? 'Success' : 'Failed'}</span></td>
     </tr>`;
   }).join('');
@@ -804,13 +835,13 @@ async function loadTransfers() {
   $('holderBody').innerHTML = rows.map(tr => {
     const isOut = (tr.from || '').toLowerCase() === ADDRESS.toLowerCase();
     return `<tr>
-      <td><a class="hash" href="#">${shorten(tr.hash)}</a></td>
-      <td>${timeAgo(tr.timestamp)}</td>
-      <td><a href="?address=${tr.from}">${shorten(tr.from)}</a></td>
+      <td><span class="hash">${escapeHtml(shorten(tr.hash))}</span></td>
+      <td>${escapeHtml(timeAgo(tr.timestamp))}</td>
+      <td><a href="?address=${encodeURIComponent(tr.from || '')}">${escapeHtml(shorten(tr.from))}</a></td>
       <td><span class="dir ${isOut ? 'out' : 'in'}">${isOut ? 'OUT' : 'IN'}</span></td>
-      <td><a href="?address=${tr.to}">${shorten(tr.to)}</a></td>
-      <td>${fmtNum(tr.amount)}</td>
-      <td>${tr.tokenSymbol || '—'}</td>
+      <td><a href="?address=${encodeURIComponent(tr.to || '')}">${escapeHtml(shorten(tr.to))}</a></td>
+      <td>${escapeHtml(fmtNum(tr.amount))}</td>
+      <td>${escapeHtml(tr.tokenSymbol || '—')}</td>
     </tr>`;
   }).join('');
 }
@@ -824,13 +855,13 @@ async function loadAbi() {
   $('funcList').innerHTML = fns.map((f, i) => {
     const isRead = f.stateMutability === 'view' || f.stateMutability === 'pure' || f.constant;
     const inputs = (f.inputs || []).map(inp => `
-      <label>${inp.name || '(unnamed)'} <span style="color:var(--ink-mute);">${inp.type}</span></label>
-      <input type="text" placeholder="${inp.type}" data-fn="${i}" data-arg="${inp.name || inp.type}" />
+      <label>${escapeHtml(inp.name || '(unnamed)')} <span style="color:var(--ink-mute);">${escapeHtml(inp.type)}</span></label>
+      <input type="text" placeholder="${escapeHtml(inp.type)}" data-fn="${i}" data-arg="${escapeHtml(inp.name || inp.type)}" />
     `).join('');
     return `<div class="func-item" data-idx="${i}">
       <div class="func-header">
         <span class="idx">${String(i+1).padStart(2,'0')}</span>
-        <span class="fname">${f.name}(${(f.inputs||[]).map(x=>x.type).join(', ')})</span>
+        <span class="fname">${escapeHtml(f.name)}(${(f.inputs||[]).map(x=>escapeHtml(x.type)).join(', ')})</span>
         <span class="ftype ${isRead ? 'read' : 'write'}">${isRead ? 'Read' : 'Write'}</span>
       </div>
       <div class="func-body">
@@ -843,6 +874,14 @@ async function loadAbi() {
   document.querySelectorAll('.func-header').forEach(h =>
     h.addEventListener('click', () => h.parentElement.classList.toggle('open'))
   );
+  document.querySelectorAll('[data-execute]').forEach(button => {
+    button.addEventListener('click', () => {
+      const result = button.parentElement.querySelector('.result');
+      result.textContent = isAddress(ADDRESS)
+        ? 'Wallet/RPC execution must be connected by the host application.'
+        : 'Enter a valid contract address first.';
+    });
+  });
 }
 
 async function loadSource() {
@@ -868,12 +907,12 @@ async function loadEvents() {
   $('logList').innerHTML = logs.map(l => `
     <div class="log-item">
       <div class="log-head">
-        <span>Block <a href="#">${fmtNum(l.blockNumber, 0)}</a> · Txn <a class="hash" href="#">${shorten(l.txHash)}</a></span>
-        <span>${timeAgo(l.timestamp)}</span>
+        <span>Block ${escapeHtml(fmtNum(l.blockNumber, 0))} · Txn <span class="hash">${escapeHtml(shorten(l.txHash))}</span></span>
+        <span>${escapeHtml(timeAgo(l.timestamp))}</span>
       </div>
-      <div class="log-name">${l.name || 'Anonymous'}(${(l.params||[]).map(p=>p.type).join(', ')})</div>
+      <div class="log-name">${escapeHtml(l.name || 'Anonymous')}(${(l.params||[]).map(p=>escapeHtml(p.type)).join(', ')})</div>
       <div class="log-data">
-        ${(l.params || []).map(p => `<div><span class="k">${p.name}:</span> ${p.value}</div>`).join('')}
+        ${(l.params || []).map(p => `<div><span class="k">${escapeHtml(p.name)}:</span> ${escapeHtml(p.value)}</div>`).join('')}
       </div>
     </div>
   `).join('');
@@ -881,6 +920,7 @@ async function loadEvents() {
 
 /* ---------- Kick off ---------- */
 $('footerYear').textContent = new Date().getFullYear();
+$('followBtn').textContent = localStorage.getItem(`followed:${ADDRESS.toLowerCase()}`) === 'true' ? 'Following' : 'Follow';
 loadContract();
 </script>
 
